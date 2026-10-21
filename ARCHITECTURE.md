@@ -17,7 +17,7 @@ paths.
 
 | Module | Contents |
 | --- | --- |
-| `cachify/__init__.py` | Public API: `cache`, `Input`, `CacheInfo`, `CycleError`, `UntrackedEffectWarning` |
+| `cachify/__init__.py` | Public API: `cache`, `CachedFunction`, `CacheInfo`, `CacheParameters`, `Input`, `CycleError`, `UntrackedEffectWarning` |
 | `cachify/_state.py` | Shared state: the lock, the revision counter and the stack of running cached calls |
 | `cachify/_inputs.py` | `Input`, and the inputs Cachify creates and polls itself |
 | `cachify/_cache.py` | The `cache` decorator, memos and the red-green algorithm |

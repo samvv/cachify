@@ -8,8 +8,10 @@ from . import _state
 class BaseInput:
     __slots__ = ('_changed_at', '__weakref__')
 
+    _changed_at: int
 
-class Input(BaseInput):
+
+class Input[T](BaseInput):
     """A value that cached functions can depend on.
 
     Most state is tracked automatically.  Use Input for state that cachify
@@ -21,18 +23,20 @@ class Input(BaseInput):
 
     __slots__ = ('_value',)
 
-    def __init__(self, value):
+    _value: T
+
+    def __init__(self, value: T) -> None:
         with _state.lock:
             self._value = value
             self._changed_at = _state.revision
 
-    def get(self):
+    def get(self) -> T:
         """Return the value and record it as a dependency."""
         with _state.lock:
             _state.record(self)
             return self._value
 
-    def set(self, value):
+    def set(self, value: T) -> None:
         """Change the value."""
         with _state.lock:
             if _state.active.get() is not None:
@@ -42,7 +46,7 @@ class Input(BaseInput):
             self._value = value
             self._changed_at = _state.revision
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{type(self).__name__}({self._value!r})'
 
 

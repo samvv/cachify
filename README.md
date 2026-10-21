@@ -61,11 +61,17 @@ the result. Works both as `@cache` and as `@cache(...)`.
   `cycle_initial`.
 
 Arguments must be hashable. Generator and coroutine functions can't be
-cached. The decorated function also has:
+cached. The decorated function is a `CachedFunction`.
+
+### `CachedFunction[**P, R]`
+
+Protocol for a function decorated with `@cache`. It is called like the
+original function, with the same parameter types `P` and return type `R`,
+and also works as a method. It has:
 
 - `f.cache_info()`: returns a `CacheInfo`.
 - `f.cache_clear()`: removes all cached results and resets the statistics.
-- `f.cache_parameters()`: returns the decorator's arguments as a dict.
+- `f.cache_parameters()`: returns a `CacheParameters`.
 - `f.__wrapped__`: the original function.
 
 ### `CacheInfo`
@@ -73,12 +79,17 @@ cached. The decorated function also has:
 Named tuple returned by `cache_info()`, with the fields `hits`, `misses`,
 `maxsize` and `currsize`.
 
-### `Input(value)`
+### `CacheParameters`
+
+Typed dict returned by `cache_parameters()`, with the decorator's arguments
+`maxsize`, `typed`, `cycle_initial` and `cycle_fn`.
+
+### `Input[T](value)`
 
 A value that cached functions can depend on, for state Cachify can't track
 by itself, such as the contents of a mutable object.
 
-- `get()`: returns the value and records it as a dependency.
+- `get()`: returns the value, of type `T`, and records it as a dependency.
 - `set(value)`: changes the value, so results that read it are recomputed.
   Raises `RuntimeError` if called while a cached function is running.
 

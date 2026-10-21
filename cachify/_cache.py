@@ -1,17 +1,78 @@
 """The cache decorator and the red-green algorithm."""
 
-from __future__ import annotations
-
-from collections import namedtuple
+from collections.abc import Callable
 from functools import _make_key, update_wrapper
 from itertools import count
+from typing import (Any, Concatenate, NamedTuple, Protocol, Self, TypedDict,
+                    cast, overload)
 
 from . import _state
 from ._errors import CycleError
 from ._globals import start_executing, stop_executing
 from ._inputs import poll_inputs
 
-CacheInfo = namedtuple("CacheInfo", ("hits", "misses", "maxsize", "currsize"))
+
+
+class CacheInfo(NamedTuple):
+    """Statistics of a cached function, returned by cache_info()."""
+
+    hits: int
+    misses: int
+    maxsize: int | None
+    currsize: int
+
+
+class CacheParameters(TypedDict):
+    """The arguments of cache(), returned by cache_parameters()."""
+
+    maxsize: int | None
+    typed: bool
+    cycle_initial: Callable[..., Any] | None
+    cycle_fn: Callable[..., Any] | None
+
+
+class CachedFunction[**P, R](Protocol):
+    """A function decorated with cache().
+
+    It is called like the original function, which is available as
+    __wrapped__.  Used as a method, it binds like a function.
+    """
+
+    __name__: str
+    __qualname__: str
+
+    @property
+    def __wrapped__(self) -> Callable[P, R]:
+        """The original function."""
+        ...
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R: ...
+
+    def cache_info(self) -> CacheInfo:
+        """Report cache statistics."""
+        ...
+
+    def cache_clear(self) -> None:
+        """Clear the cache and cache statistics."""
+        ...
+
+    def cache_parameters(self) -> CacheParameters:
+        """Return the parameters the cache was created with."""
+        ...
+
+    @overload
+    def __get__(self, instance: None, owner: type, /) -> Self: ...
+    @overload
+    def __get__[S, **Q](self: 'CachedFunction[Concatenate[S, Q], R]',
+                        instance: S, owner: type | None = None, /
+                        ) -> 'CachedFunction[Q, R]': ...
+
+
+class _Decorator(Protocol):
+    """What cache() returns when it is given options."""
+
+    def __call__[**P, R](self, user_function: Callable[P, R], /
+                         ) -> CachedFunction[P, R]: ...
 
 NO_VALUE = _state.NO_VALUE
 
@@ -159,7 +220,7 @@ class Query:
         self.pinned = {}    # key -> memo in a cycle; these are never evicted
         self.hits = self.misses = 0
 
-    def call(self, args, kwds):
+    def call(self, args: tuple[Any, ...], kwds: dict[str, Any]) -> Any:
         key = _make_key(args, kwds, self.typed)
         with _state.lock:
             if _state.active.get() is None:
@@ -434,12 +495,12 @@ class Query:
             # so results that depend on it can still be checked.
             values.pop(next(iter(values))).value = NO_VALUE
 
-    def info(self):
+    def info(self) -> CacheInfo:
         with _state.lock:
             return CacheInfo(self.hits, self.misses, self.maxsize,
                              len(self.values) + len(self.pinned))
 
-    def clear(self):
+    def clear(self) -> None:
         with _state.lock:
             # Results that depend on these memos will be recomputed.
             for memo in self.memos.values():
@@ -451,7 +512,19 @@ class Query:
             self.hits = self.misses = 0
 
 
-def cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None):
+@overload
+def cache[**P, R](maxsize: Callable[P, R], /) -> CachedFunction[P, R]: ...
+@overload
+def cache(maxsize: int | None = 128, typed: bool = False, *,
+          cycle_initial: None = None, cycle_fn: None = None) -> _Decorator: ...
+@overload
+def cache[**P, R](maxsize: int | None = 128, typed: bool = False, *,
+                  cycle_initial: Callable[P, R],
+                  cycle_fn: Callable[Concatenate[R, R, int, P], R] | None = None
+                  ) -> Callable[[Callable[P, R]], CachedFunction[P, R]]: ...
+def cache(maxsize: Any = 128, typed: bool = False, *,
+          cycle_initial: Callable[..., Any] | None = None,
+          cycle_fn: Callable[..., Any] | None = None) -> Any:
     """Cache the results of a function and track what they depend on.
 
     While the function runs, the global variables, files and environment
@@ -515,15 +588,17 @@ def cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None):
         if cycle_initial is None:
             raise TypeError('cycle_fn requires cycle_initial')
 
-    def decorating_function(user_function):
+    def decorating_function(user_function: Callable[..., Any]) -> Any:
         return _make_wrapper(user_function, maxsize, typed, cycle_initial,
                              cycle_fn)
 
     return decorating_function
 
 
-def _make_wrapper(user_function, maxsize, typed, cycle_initial=None,
-                  cycle_fn=None):
+def _make_wrapper[**P, R](
+        user_function: Callable[P, R], maxsize: int | None, typed: bool,
+        cycle_initial: Callable[..., Any] | None = None,
+        cycle_fn: Callable[..., Any] | None = None) -> CachedFunction[P, R]:
     if not callable(user_function):
         raise TypeError("the first argument must be callable")
     code = getattr(user_function, '__code__', None)
@@ -533,23 +608,23 @@ def _make_wrapper(user_function, maxsize, typed, cycle_initial=None,
 
     query = Query(user_function, maxsize, typed, cycle_initial, cycle_fn)
 
-    def wrapper(*args, **kwds):
+    def wrapper(*args: P.args, **kwds: P.kwargs) -> R:
         return query.call(args, kwds)
 
-    def cache_info():
+    def cache_info() -> CacheInfo:
         """Report cache statistics"""
         return query.info()
 
-    def cache_clear():
+    def cache_clear() -> None:
         """Clear the cache and cache statistics"""
         query.clear()
 
-    def cache_parameters():
+    def cache_parameters() -> CacheParameters:
         """Return the parameters the cache was created with"""
         return {'maxsize': maxsize, 'typed': typed,
                 'cycle_initial': cycle_initial, 'cycle_fn': cycle_fn}
 
-    wrapper.cache_info = cache_info # type: ignore
-    wrapper.cache_clear = cache_clear # type: ignore
-    wrapper.cache_parameters = cache_parameters # type: ignore
-    return update_wrapper(wrapper, user_function)
+    for helper in (cache_info, cache_clear, cache_parameters):
+        setattr(wrapper, helper.__name__, helper)
+    # A plain function with attributes, so it binds as a method.
+    return cast(CachedFunction[P, R], update_wrapper(wrapper, user_function))

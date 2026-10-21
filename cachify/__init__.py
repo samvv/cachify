@@ -40,11 +40,11 @@ it into an error with the warnings filter
 
 from ._errors import CycleError, UntrackedEffectWarning
 from ._inputs import Input
-from ._cache import CacheInfo, cache
+from ._cache import CachedFunction, CacheInfo, CacheParameters, cache
 
 # Imported for their side effects: they install the hooks that track files
 # and environment variables.
 from . import _audit, _environ
 
-__all__ = ['cache', 'CacheInfo', 'CycleError', 'Input',
-           'UntrackedEffectWarning']
+__all__ = ['cache', 'CachedFunction', 'CacheInfo', 'CacheParameters',
+           'CycleError', 'Input', 'UntrackedEffectWarning']
