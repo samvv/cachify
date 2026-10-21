@@ -2,10 +2,10 @@
 
 [![Vibe-Scale 3: Significant AI use with understanding or testing gaps](https://img.shields.io/badge/Vibe--Scale%203-Significant%20AI%20with%20gaps-ffe066)](https://github.com/vibesdk/vibe-scale/blob/main/scale/vibe-3.md)
 
-Cachify is an experimental programming language for running **incremental
+Cachify is an experimental Python package for running **incremental
 computations**. You write regular Python code, but intensive computations can
-be cached to provide a performance benefit. When an input to one of your
-marked functions changes, only dependencies that require the changed input are
+be cached to provide a performance benefit. When an input to one of your marked
+functions changes, only dependencies that require the changed input are
 re-computed.
 
 **Where is it useful?**
