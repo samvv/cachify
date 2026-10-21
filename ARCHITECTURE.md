@@ -139,11 +139,13 @@ class Query:                                   # what @cache returns
 ### Rules and edge cases
 
 - **Cycles.** If a memo that is still being computed is called again, raise
-  `CycleError`.
+  `CycleError`, unless its function has a `cycle_initial` (see
+  [Cycles](#cycles)).
 - **Exceptions.** If the function raises, no memo is stored.
 - **Generators and async functions.** Rejected when `@cache` is applied,
   because the decorator can't tell when they finish.
-- **`maxsize`.** Eviction drops a memo's value but keeps its dependency
+- **`maxsize`.** Results that are part of a cycle are never evicted.
+  Eviction drops a memo's value but keeps its dependency
   record, as in Salsa's LRU. A later call can still be checked as up to date,
   and the call only re-runs if the value is needed. Re-running an evicted
   memo that is up to date keeps its `changed_at`, since a pure function gives
@@ -159,6 +161,45 @@ class Query:                                   # what @cache returns
 - **Mutable values.** A caller that changes a cached return value in place
   corrupts the cache. Return values should be frozen, or this rule must be
   documented.
+
+### Cycles
+
+`@cache(cycle_initial=fn)` solves a cycle by fixpoint iteration, as in
+Salsa:
+
+1. When a running memo is called again, it becomes a **cycle head**. The
+   inner call returns a provisional value, `fn(*args, **kwds)`, computed
+   once per run of the head with the same arguments.
+2. When the head's function returns, its result is compared with the
+   provisional value. If they differ, the result becomes the new provisional
+   value and the head runs again. Otherwise the cycle has converged. After
+   `MAX_ITERATIONS` (200) runs, `CycleError` is raised.
+3. Results computed from a provisional value are **provisional** too. Each
+   one stores the heads it used and the id of the head's run
+   (`cycle_heads`). In the next run of the head the ids differ, so they are
+   recomputed. Once the head converges, its last run is final, and so are
+   the results computed in it.
+
+The call that is re-entered must have `cycle_initial`. The first call into a
+cycle is the one that gets re-entered, so it depends on where the cycle is
+entered from.
+
+A solved cycle leaves a loop in the dependency graph, which validation has
+to handle:
+
+- **Checking a cycle.** When checking a memo's dependencies leads back to
+  the memo itself, it is assumed unchanged, as in Salsa. Memos confirmed on
+  that assumption are recorded (`pending` and `assumes`). If the memo turns
+  out to be unchanged they are confirmed; otherwise they are reset to
+  unverified.
+- **Re-solving.** A result in a cycle never re-runs on its own while its
+  head is checked, because it would use the old values of the rest of the
+  cycle and could keep a stale value alive. Instead the check is abandoned
+  (`CycleChanged`) and the head runs again from `cycle_initial`. The same
+  happens when a result that re-runs during a check uses a value that was
+  only assumed unchanged, since that is a new cycle.
+- **Entering from the side.** Checking a result in a cycle (`cycle_of`)
+  first brings its heads up to date.
 
 ## Tracking reads
 

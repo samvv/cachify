@@ -99,7 +99,8 @@ class TestCache(unittest.TestCase):
 
     def test_cache_parameters(self):
         f = cachify.cache(maxsize=10, typed=True)(lambda x: x)
-        self.assertEqual(f.cache_parameters(), {'maxsize': 10, 'typed': True})
+        self.assertEqual(f.cache_parameters(), {'maxsize': 10, 'typed': True,
+                                                'cycle_initial': None})
 
     def test_unhashable_argument(self):
         f = cachify.cache()(lambda x: x)
