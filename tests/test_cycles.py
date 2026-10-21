@@ -1,3 +1,4 @@
+import math
 
 import pytest
 
@@ -230,3 +231,80 @@ def test_exception_in_cycle():
 def test_not_callable():
     with pytest.raises(TypeError):
         cachify.cache(cycle_initial=1)
+
+
+def test_cycle_fn_widens():
+    # Without cycle_fn this never converges: every run adds one.
+    def widen(previous, value, iteration):
+        return value if value <= 5 else math.inf
+
+    @cachify.cache(cycle_initial=lambda: 0, cycle_fn=widen)
+    def f():
+        return f() + 1
+
+    assert f() == math.inf
+
+
+def test_cycle_fn_arguments():
+    calls = []
+
+    def cycle_fn(previous, value, iteration, n, *, scale):
+        calls.append((previous, value, iteration, n, scale))
+        return value
+
+    @cachify.cache(cycle_initial=lambda n, *, scale: 0, cycle_fn=cycle_fn)
+    def f(n, *, scale):
+        return min(f(n, scale=scale) + 1, n * scale)
+
+    assert f(1, scale=2) == 2
+    # Called after every run, including the one that converged
+    assert calls == [(0, 1, 0, 1, 2), (1, 2, 1, 1, 2), (2, 2, 2, 1, 2)]
+
+
+def test_cycle_fn_result_is_used():
+    @cachify.cache(cycle_initial=lambda: 0,
+                   cycle_fn=lambda previous, value, iteration: 'done')
+    def f():
+        f()
+        return 'running'
+
+    assert f() == 'done'
+
+
+def test_cycle_fn_not_called_without_cycle():
+    calls = []
+
+    def cycle_fn(previous, value, iteration):
+        calls.append(value)
+        return value
+
+    @cachify.cache(cycle_initial=lambda: 0, cycle_fn=cycle_fn)
+    def f():
+        return 1
+
+    assert f() == 1
+    assert calls == []
+
+
+def test_cycle_fn_reads_are_tracked():
+    limit = cachify.Input(3)
+
+    @cachify.cache(cycle_initial=lambda: 0,
+                   cycle_fn=lambda previous, value, iteration:
+                       min(value, limit.get()))
+    def f():
+        return f() + 1
+
+    assert f() == 3
+    limit.set(5)
+    assert f() == 5
+
+
+def test_cycle_fn_requires_cycle_initial():
+    with pytest.raises(TypeError):
+        cachify.cache(cycle_fn=lambda previous, value, iteration: value)
+
+
+def test_cycle_fn_not_callable():
+    with pytest.raises(TypeError):
+        cachify.cache(cycle_initial=lambda: 0, cycle_fn=1)

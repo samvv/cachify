@@ -174,6 +174,13 @@ Salsa:
    provisional value. If they differ, the result becomes the new provisional
    value and the head runs again. Otherwise the cycle has converged. After
    `MAX_ITERATIONS` (200) runs, `CycleError` is raised.
+
+   With `@cache(cycle_initial=..., cycle_fn=fn)`, the result is first passed
+   through `fn(previous, value, iteration, *args, **kwds)`, after every run
+   including the last, and what it returns is used instead. This lets a
+   cycle that would never converge be forced to, for example by widening a
+   value that keeps growing. As in Salsa, `cycle_fn` is optional, defaults
+   to returning `value`, and requires `cycle_initial`.
 3. Results computed from a provisional value are **provisional** too. Each
    one stores the heads it used and the id of the head's run
    (`cycle_heads`). In the next run of the head the ids differ, so they are

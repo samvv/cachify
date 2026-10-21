@@ -147,9 +147,11 @@ def _all_heads(memo):
 class Query:
     """The memo table of one cached function."""
 
-    def __init__(self, user_function, maxsize, typed, cycle_initial=None):
+    def __init__(self, user_function, maxsize, typed, cycle_initial=None,
+                 cycle_fn=None):
         self.user_function = user_function
         self.cycle_initial = cycle_initial
+        self.cycle_fn = cycle_fn
         self.maxsize = maxsize
         self.typed = typed
         self.memos = {}     # key -> memo
@@ -370,10 +372,14 @@ class Query:
                 self.misses += 1
                 value = self.user_function(*memo.args, **memo.kwds)
                 cycle = memo.cycle
-                # If the call was re-entered, run again with the new value as
+                if cycle is None or not cycle.hit:
+                    break
+                if self.cycle_fn is not None:
+                    value = self.cycle_fn(cycle.value, value, iterations,
+                                          *memo.args, **memo.kwds)
+                # The call was re-entered.  Run again with the new value as
                 # the provisional one until it stops changing.
-                if (cycle is None or not cycle.hit
-                        or _same(cycle.value, value)):
+                if _same(cycle.value, value):
                     break
                 iterations += 1
                 if iterations >= MAX_ITERATIONS:
@@ -445,7 +451,7 @@ class Query:
             self.hits = self.misses = 0
 
 
-def cache(maxsize=128, typed=False, *, cycle_initial=None):
+def cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None):
     """Cache the results of a function and track what they depend on.
 
     While the function runs, the global variables, files and environment
@@ -470,6 +476,13 @@ def cache(maxsize=128, typed=False, *, cycle_initial=None):
     result stops changing.  CycleError is raised if it doesn't converge
     within MAX_ITERATIONS runs.
 
+    If *cycle_fn* is given as well, it is called after every run of the
+    outer call as cycle_fn(previous, value, iteration, *args, **kwds), where
+    *previous* is the provisional value the run used, *value* is its result
+    and *iteration* counts the earlier runs, starting at 0.  It returns the
+    value to use instead of *value*, for example to widen a value that keeps
+    growing so the iteration converges.  By default *value* is used as is.
+
     Arguments to the cached function must be hashable.  Generator and
     coroutine functions cannot be cached.
 
@@ -488,7 +501,7 @@ def cache(maxsize=128, typed=False, *, cycle_initial=None):
     elif callable(maxsize) and isinstance(typed, bool):
         # Used as @cache without parentheses
         user_function, maxsize = maxsize, 128
-        return _make_wrapper(user_function, maxsize, typed, cycle_initial)
+        return _make_wrapper(user_function, maxsize, typed)
 
     elif maxsize is not None:
         raise TypeError(
@@ -496,14 +509,21 @@ def cache(maxsize=128, typed=False, *, cycle_initial=None):
 
     if cycle_initial is not None and not callable(cycle_initial):
         raise TypeError('cycle_initial must be callable')
+    if cycle_fn is not None:
+        if not callable(cycle_fn):
+            raise TypeError('cycle_fn must be callable')
+        if cycle_initial is None:
+            raise TypeError('cycle_fn requires cycle_initial')
 
     def decorating_function(user_function):
-        return _make_wrapper(user_function, maxsize, typed, cycle_initial)
+        return _make_wrapper(user_function, maxsize, typed, cycle_initial,
+                             cycle_fn)
 
     return decorating_function
 
 
-def _make_wrapper(user_function, maxsize, typed, cycle_initial=None):
+def _make_wrapper(user_function, maxsize, typed, cycle_initial=None,
+                  cycle_fn=None):
     if not callable(user_function):
         raise TypeError("the first argument must be callable")
     code = getattr(user_function, '__code__', None)
@@ -511,7 +531,7 @@ def _make_wrapper(user_function, maxsize, typed, cycle_initial=None):
             _CO_GENERATOR | _CO_COROUTINE | _CO_ASYNC_GENERATOR):
         raise TypeError("generator and coroutine functions cannot be cached")
 
-    query = Query(user_function, maxsize, typed, cycle_initial)
+    query = Query(user_function, maxsize, typed, cycle_initial, cycle_fn)
 
     def wrapper(*args, **kwds):
         return query.call(args, kwds)
@@ -527,7 +547,7 @@ def _make_wrapper(user_function, maxsize, typed, cycle_initial=None):
     def cache_parameters():
         """Return the parameters the cache was created with"""
         return {'maxsize': maxsize, 'typed': typed,
-                'cycle_initial': cycle_initial}
+                'cycle_initial': cycle_initial, 'cycle_fn': cycle_fn}
 
     wrapper.cache_info = cache_info # type: ignore
     wrapper.cache_clear = cache_clear # type: ignore

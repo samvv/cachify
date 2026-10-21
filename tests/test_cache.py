@@ -109,7 +109,8 @@ def test_cache_clear():
 def test_cache_parameters():
     f = cachify.cache(maxsize=10, typed=True)(lambda x: x)
     assert f.cache_parameters() == {
-        'maxsize': 10, 'typed': True, 'cycle_initial': None}
+        'maxsize': 10, 'typed': True, 'cycle_initial': None,
+        'cycle_fn': None}
 
 
 def test_unhashable_argument():
