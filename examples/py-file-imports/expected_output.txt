@@ -1,0 +1,24 @@
+First run:
+  resolving app.py
+  parsing app.py
+  resolving db.py
+  parsing db.py
+  resolving models.py
+  parsing models.py
+  resolving db.py
+  resolving models.py
+  resolving ui.py
+  parsing ui.py
+['db', 'models', 'ui']
+Nothing changed:
+['db', 'models', 'ui']
+Only a comment changed in ui.py:
+  parsing ui.py
+['db', 'models', 'ui']
+ui.py gained an import:
+  parsing ui.py
+  resolving ui.py
+  resolving theme.py
+  parsing theme.py
+  resolving app.py
+['db', 'models', 'theme', 'ui']
