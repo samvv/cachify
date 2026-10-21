@@ -37,5 +37,64 @@ print(is_prime(3314192745739))
 print(is_prime(3314192745739))
 ```
 
+## Reference
+
+### `cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None)`
+
+Decorator that caches a function's results and tracks what they depend on:
+global variables, files, directories, environment variables, `Input`s and
+other cached functions. When one of those changes, the next call recomputes
+the result. Works both as `@cache` and as `@cache(...)`.
+
+- `maxsize`: maximum number of cached results, least recently used first
+  out. `None` means no limit. Results that are part of a cycle are never
+  evicted.
+- `typed`: if true, arguments of different types are cached separately,
+  so `f(3)` and `f(3.0)` are distinct calls.
+- `cycle_initial`: solves cycles by fixpoint iteration instead of raising
+  `CycleError`. When a running call is called again, the inner call returns
+  `cycle_initial(*args, **kwds)`, and the outer call re-runs until its
+  result stops changing.
+- `cycle_fn`: called after every run of a cycle as
+  `cycle_fn(previous, value, iteration, *args, **kwds)`. Its return value is
+  used instead of `value`, for example to force convergence. Requires
+  `cycle_initial`.
+
+Arguments must be hashable. Generator and coroutine functions can't be
+cached. The decorated function also has:
+
+- `f.cache_info()`: returns a `CacheInfo`.
+- `f.cache_clear()`: removes all cached results and resets the statistics.
+- `f.cache_parameters()`: returns the decorator's arguments as a dict.
+- `f.__wrapped__`: the original function.
+
+### `CacheInfo`
+
+Named tuple returned by `cache_info()`, with the fields `hits`, `misses`,
+`maxsize` and `currsize`.
+
+### `Input(value)`
+
+A value that cached functions can depend on, for state Cachify can't track
+by itself, such as the contents of a mutable object.
+
+- `get()`: returns the value and records it as a dependency.
+- `set(value)`: changes the value, so results that read it are recomputed.
+  Raises `RuntimeError` if called while a cached function is running.
+
+### `CycleError`
+
+Subclass of `RuntimeError`. Raised when a cached function depends on its
+own result and has no `cycle_initial`, or when fixpoint iteration doesn't
+converge within 200 runs.
+
+### `UntrackedEffectWarning`
+
+Subclass of `RuntimeWarning`. Issued when a cached function uses state that
+Cachify doesn't track, such as writing files, starting subprocesses or using
+the network. The result won't be recomputed when that state changes. Use the
+warning filter `error::cachify.UntrackedEffectWarning` to turn it into an
+error.
+
 [salsa]: https://salsa-rs.netlify.app/
 [redgreen]: https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation.html
