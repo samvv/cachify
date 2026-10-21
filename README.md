@@ -37,6 +37,50 @@ print(is_prime(3314192745739))
 print(is_prime(3314192745739))
 ```
 
+## A bigger example
+
+The script below finds every module a Python file imports, directly or
+indirectly. It shows the main features of Cachify:
+
+- Files read with `open()` are tracked automatically, with no `Input` needed.
+- Only the functions affected by a change run again.
+- If a result is recomputed but comes out the same, the functions that use it
+  are not rerun.
+- Modules that import each other form a cycle, which `cycle_initial` solves.
+
+```py
+import ast
+import os
+from cachify import cache
+
+@cache
+def direct_imports(path: str) -> frozenset[str]:
+    with open(path) as f:  # Cachify notices when this file changes
+        tree = ast.parse(f.read(), path)
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):  # import x, y
+            names.update(alias.name for alias in node.names)
+        # from x import y, but not relative imports like from . import y
+        elif (isinstance(node, ast.ImportFrom) and node.module
+              and not node.level):
+            names.add(node.module)
+    return frozenset(names)
+
+# Modules can import each other, so this function can call itself.
+# cycle_initial makes Cachify solve that cycle instead of raising CycleError.
+@cache(cycle_initial=lambda path: frozenset())
+def all_imports(path: str) -> frozenset[str]:
+    folder = os.path.dirname(path)
+    result = set(direct_imports(path))
+    for name in direct_imports(path):
+        result |= all_imports(os.path.join(folder, f"{name}.py"))
+    return frozenset(result)
+```
+
+The full script, which changes the files and shows what runs again each time,
+is in [`examples/py-file-imports`](examples/py-file-imports).
+
 ## Reference
 
 ### `@cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None)`
