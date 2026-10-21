@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -246,3 +247,25 @@ def test_environ_identity_preserved():
     from os import environ
     assert environ is os.environ
     assert isinstance(os.environ, os._Environ)
+
+
+def test_imported_through_unnormalized_path(tmp_path):
+    # Cachify must skip its own code even when the path it was imported from
+    # contains '..', or its internal state would look like changed globals.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(cachify.__file__)))
+    script = tmp_path / 'script.py'
+    script.write_text(
+        'import sys\n'
+        f'sys.path.insert(0, {os.path.join(root, "tests", "..")!r})\n'
+        'import cachify\n'
+        'calls = []\n'
+        '@cachify.cache()\n'
+        'def f():\n'
+        '    calls.append(1)\n'
+        '    return 1\n'
+        'f()\n'
+        'f()\n'
+        'print(len(calls))\n')
+    result = subprocess.run([sys.executable, '-I', str(script)],
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == '1'

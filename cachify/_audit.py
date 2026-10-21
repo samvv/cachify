@@ -54,7 +54,7 @@ def _audit_hook(event, args, *,
                 in_hook=_in_audit_hook, getframe=sys._getframe,
                 warn=warnings.warn, fspath=os.fspath, PathLike=os.PathLike,
                 write_flags=_WRITE_FLAGS, track_path=track_path,
-                skip=(_state.PACKAGE_DIR,)):
+                skip=_state.PACKAGE_DIRS):
     kind = kinds.get(event)
     if kind is None:
         return

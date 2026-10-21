@@ -22,8 +22,13 @@ active = ContextVar['Memo | None']('cachify_active', default=None)
 NO_VALUE = object()
 MISSING = object()
 
-# Code in this package is not tracked and is skipped in warnings.
-PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__)) + os.sep
+# Code in this package is not tracked and is skipped in warnings.  Code
+# objects keep the path the package was imported from, which may contain '..'
+# or a symlink, so the normalized path alone would not match.
+PACKAGE_DIRS = tuple(dict.fromkeys(
+    os.path.dirname(path) + os.sep
+    for path in (__file__, os.path.abspath(__file__),
+                 os.path.realpath(__file__))))
 
 
 def record(dep):

@@ -25,7 +25,7 @@ def _global_names(code):
 
 
 def _on_py_start(code, offset, *, active=_state.active,
-                 getframe=sys._getframe, skip=_state.PACKAGE_DIR):
+                 getframe=sys._getframe, skip=_state.PACKAGE_DIRS):
     memo = active.get()
     if memo is None or code in memo.codes:
         return
