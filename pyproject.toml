@@ -1,0 +1,52 @@
+[project]
+name = "cachify"
+version = "0.1.0"
+description = "A programming language for performing incremental computations"
+readme = "README.md"
+requires-python = ">=3.13"
+keywords = [ "programming-language", "compiler", "interpreter", "caching", "persistence", "computation" ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Interpreters",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[[project.authors]]
+name = "Sam Vervaeck"
+email = "samvv@pm.me"
+
+[[project.maintainers]]
+name = "Sam Vervaeck"
+email = "samvv@pm.me"
+
+[build-system]
+requires = [ "setuptools>=43.0.0",]
+build-backend = "setuptools.build_meta"
+
+[project.license]
+file = "LICENSE.txt"
+
+[project.optional-dependencies]
+dev = [ "check-manifest" ]
+test = [ "pytest" ]
+
+[project.urls]
+Homepage = "https://github.com/samvv/cachify"
+"Bug Reports" = "https://github.com/samvv/cachify/issues"
+Source = "https://github.com/samvv/cachify/"
+
+#[project.scripts]
+#cachify = "cachify.cli:main"
+
+[tool.pyright]
+include = [ "cachify" ]
+
+[tool.ty]
+include = [ "cachify" ]
