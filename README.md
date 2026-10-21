@@ -39,7 +39,7 @@ print(is_prime(3314192745739))
 
 ## Reference
 
-### `cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None)`
+### `@cache(maxsize=128, typed=False, *, cycle_initial=None, cycle_fn=None)`
 
 Decorator that caches a function's results and tracks what they depend on:
 global variables, files, directories, environment variables, `Input`s and
