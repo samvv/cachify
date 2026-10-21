@@ -1,219 +1,248 @@
 import os
-import pathlib
 import sys
-import tempfile
-import unittest
+from typing import Any
+
+import pytest
 
 import cachify
 import cachify._globals
-from helpers import UntrackedAssertions
+from helpers import assert_no_untracked
 
 
-class TestAutomaticInputs(UntrackedAssertions, unittest.TestCase):
+@pytest.fixture
 
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
 
-    def path(self, name):
-        return os.path.join(self.tmp.name, name)
+def tmp(tmp_path):
+    """A temporary directory, as a string path."""
+    return str(tmp_path)
 
-    def write(self, name, text):
-        with open(self.path(name), 'w') as f:
-            f.write(text)
 
-    def namespace(self, source):
-        ns = {}
-        exec(source, ns)
-        return ns
+@pytest.fixture
 
-    def test_global_variable(self):
-        ns = self.namespace(
-            'import cachify\n'
-            'calls = []\n'
-            'threshold = 10\n'
-            'def is_big(n):\n'
-            '    return n > threshold\n'
-            '@cachify.cache()\n'
-            'def count_big(numbers):\n'
-            '    calls.append(1)\n'
-            '    return sum(1 for n in numbers if is_big(n))\n')
-        count_big = ns['count_big']
-        data = (5, 12, 30)
-        self.assertEqual(count_big(data), 2)
-        self.assertEqual(count_big(data), 2)
-        ns['threshold'] = 20
-        self.assertEqual(count_big(data), 1)
-        self.assertEqual(count_big(data), 1)
-        self.assertEqual(len(ns['calls']), 2)
 
-    def test_unrelated_global(self):
-        ns = self.namespace(
-            'import cachify\n'
-            'calls = []\n'
-            'a = 1\n'
-            'b = 2\n'
-            '@cachify.cache()\n'
-            'def f():\n'
-            '    calls.append(1)\n'
-            '    return a\n')
-        ns['f']()
-        ns['b'] = 3
-        ns['unused'] = 4
-        self.assertEqual(ns['f'](), 1)
-        self.assertEqual(len(ns['calls']), 1)
+def unset_env():
+    """Unset environment variables now and again after the test."""
+    names = []
 
-    def test_redefined_function(self):
-        ns = self.namespace(
-            'import cachify\n'
-            'def helper():\n'
-            '    return 1\n'
-            '@cachify.cache()\n'
-            'def f():\n'
-            '    return helper()\n')
-        self.assertEqual(ns['f'](), 1)
-        exec('def helper():\n    return 2\n', ns)
-        self.assertEqual(ns['f'](), 2)
+    def unset(name):
+        names.append(name)
+        os.environ.pop(name, None)
+        return name
 
-    def test_shadowed_builtin(self):
-        ns = self.namespace(
-            'import cachify\n'
-            '@cachify.cache()\n'
-            'def f():\n'
-            '    return len("abc")\n')
-        self.assertEqual(ns['f'](), 3)
-        ns['len'] = lambda s: 42
-        self.assertEqual(ns['f'](), 42)
-        del ns['len']
-        self.assertEqual(ns['f'](), 3)
+    yield unset
+    for name in names:
+        os.environ.pop(name, None)
 
-    def test_globals_of_other_module(self):
-        lib = self.namespace(
-            'scale = 2\n'
-            'def double(n):\n'
-            '    return n * scale\n')
-        app = self.namespace('import cachify\n')
-        app['double'] = lib['double']
-        exec('@cachify.cache()\n'
-             'def f(n):\n'
-             '    return double(n)\n', app)
-        self.assertEqual(app['f'](5), 10)
-        lib['scale'] = 3
-        self.assertEqual(app['f'](5), 15)
 
-    def test_monitoring_off_outside_cached_calls(self):
-        f = cachify.cache()(lambda: 1)
-        f()
-        tool = cachify._globals.tool
-        self.assertIsNotNone(tool)
-        self.assertEqual(sys.monitoring.get_events(tool), 0)
+def write(path, text):
+    with open(path, 'w') as f:
+        f.write(text)
 
-    def test_file_contents(self):
-        self.write('data.txt', 'one')
-        calls = []
 
-        @cachify.cache()
-        def read(path):
-            calls.append(1)
+def namespace(source) -> dict[str, Any]:
+    ns: dict[str, Any] = {}
+    exec(source, ns)
+    return ns
+
+
+def test_global_variable():
+    ns = namespace(
+        'import cachify\n'
+        'calls = []\n'
+        'threshold = 10\n'
+        'def is_big(n):\n'
+        '    return n > threshold\n'
+        '@cachify.cache()\n'
+        'def count_big(numbers):\n'
+        '    calls.append(1)\n'
+        '    return sum(1 for n in numbers if is_big(n))\n')
+    count_big = ns['count_big']
+    data = (5, 12, 30)
+    assert count_big(data) == 2
+    assert count_big(data) == 2
+    ns['threshold'] = 20
+    assert count_big(data) == 1
+    assert count_big(data) == 1
+    assert len(ns['calls']) == 2
+
+
+def test_unrelated_global():
+    ns = namespace(
+        'import cachify\n'
+        'calls = []\n'
+        'a = 1\n'
+        'b = 2\n'
+        '@cachify.cache()\n'
+        'def f():\n'
+        '    calls.append(1)\n'
+        '    return a\n')
+    ns['f']()
+    ns['b'] = 3
+    ns['unused'] = 4
+    assert ns['f']() == 1
+    assert len(ns['calls']) == 1
+
+
+def test_redefined_function():
+    ns = namespace(
+        'import cachify\n'
+        'def helper():\n'
+        '    return 1\n'
+        '@cachify.cache()\n'
+        'def f():\n'
+        '    return helper()\n')
+    assert ns['f']() == 1
+    exec('def helper():\n    return 2\n', ns)
+    assert ns['f']() == 2
+
+
+def test_shadowed_builtin():
+    ns = namespace(
+        'import cachify\n'
+        '@cachify.cache()\n'
+        'def f():\n'
+        '    return len("abc")\n')
+    assert ns['f']() == 3
+    ns['len'] = lambda _: 42
+    assert ns['f']() == 42
+    del ns['len']
+    assert ns['f']() == 3
+
+
+def test_globals_of_other_module():
+    lib = namespace(
+        'scale = 2\n'
+        'def double(n):\n'
+        '    return n * scale\n')
+    app = namespace('import cachify\n')
+    app['double'] = lib['double']
+    exec('@cachify.cache()\n'
+         'def f(n):\n'
+         '    return double(n)\n', app)
+    assert app['f'](5) == 10
+    lib['scale'] = 3
+    assert app['f'](5) == 15
+
+
+def test_monitoring_off_outside_cached_calls():
+    f = cachify.cache()(lambda: 1)
+    f()
+    tool = cachify._globals.tool
+    assert tool is not None
+    assert sys.monitoring.get_events(tool) == 0
+
+
+def test_file_contents(tmp):
+    path = os.path.join(tmp, 'data.txt')
+    write(path, 'one')
+    calls = []
+
+    @cachify.cache()
+    def read(path):
+        calls.append(1)
+        with open(path) as f:
+            return f.read()
+
+    def first_read():
+        assert read(path) == 'one'
+
+    assert_no_untracked(first_read)
+    assert read(path) == 'one'
+    write(path, 'three')
+    assert read(path) == 'three'
+    assert len(calls) == 2
+
+
+def test_pathlib_read(tmp_path):
+    path = tmp_path / 'data.txt'
+    path.write_text('one')
+    f = cachify.cache()(lambda: path.read_text())
+    assert f() == 'one'
+    path.write_text('three')
+    assert f() == 'three'
+
+
+def test_missing_file_created(tmp):
+    @cachify.cache()
+    def read(path):
+        try:
             with open(path) as f:
                 return f.read()
+        except FileNotFoundError:
+            return None
 
-        path = self.path('data.txt')
-        self.assertNoUntracked(lambda: self.assertEqual(read(path), 'one'))
-        self.assertEqual(read(path), 'one')
-        self.write('data.txt', 'three')
-        self.assertEqual(read(path), 'three')
-        self.assertEqual(len(calls), 2)
-
-    def test_pathlib_read(self):
-        self.write('data.txt', 'one')
-        path = pathlib.Path(self.path('data.txt'))
-        f = cachify.cache()(lambda: path.read_text())
-        self.assertEqual(f(), 'one')
-        self.write('data.txt', 'three')
-        self.assertEqual(f(), 'three')
-
-    def test_missing_file_created(self):
-        @cachify.cache()
-        def read(path):
-            try:
-                with open(path) as f:
-                    return f.read()
-            except FileNotFoundError:
-                return None
-
-        path = self.path('later.txt')
-        self.assertIsNone(read(path))
-        self.write('later.txt', 'here')
-        self.assertEqual(read(path), 'here')
-
-    def test_directory_listing(self):
-        self.write('a.txt', '')
-
-        @cachify.cache()
-        def names(path):
-            return sorted(os.listdir(path))
-
-        self.assertNoUntracked(lambda: names(self.tmp.name))
-        self.assertEqual(names(self.tmp.name), ['a.txt'])
-        self.write('b.txt', '')
-        self.assertEqual(names(self.tmp.name), ['a.txt', 'b.txt'])
-
-    def test_scandir(self):
-        @cachify.cache()
-        def count(path):
-            with os.scandir(path) as it:
-                return len(list(it))
-
-        self.assertEqual(count(self.tmp.name), 0)
-        self.write('a.txt', '')
-        self.assertEqual(count(self.tmp.name), 1)
-
-    def test_environment_variable(self):
-        name = 'CACHIFY_TEST_READ'
-        self.addCleanup(os.environ.pop, name, None)
-        calls = []
-
-        @cachify.cache()
-        def read():
-            calls.append(1)
-            return os.environ.get(name), os.getenv(name)
-
-        self.assertEqual(read(), (None, None))
-        os.environ[name] = 'a'
-        self.assertEqual(read(), ('a', 'a'))
-        self.assertEqual(read(), ('a', 'a'))
-        os.environ[name] = 'b'
-        self.assertEqual(read(), ('b', 'b'))
-        self.assertEqual(len(calls), 3)
-
-    def test_unrelated_environment_variable(self):
-        self.addCleanup(os.environ.pop, 'CACHIFY_TEST_OTHER', None)
-        calls = []
-
-        @cachify.cache()
-        def read():
-            calls.append(1)
-            return 'CACHIFY_TEST_READ' in os.environ
-
-        read()
-        os.environ['CACHIFY_TEST_OTHER'] = '1'
-        read()
-        self.assertEqual(len(calls), 1)
-
-    def test_whole_environment(self):
-        name = 'CACHIFY_TEST_ALL'
-        self.addCleanup(os.environ.pop, name, None)
-        f = cachify.cache()(lambda: dict(os.environ))
-        self.assertNotIn(name, f())
-        os.environ[name] = '1'
-        self.assertIn(name, f())
-
-    def test_environ_identity_preserved(self):
-        from os import environ
-        self.assertIs(environ, os.environ)
-        self.assertIsInstance(os.environ, os._Environ)
+    path = os.path.join(tmp, 'later.txt')
+    assert read(path) is None
+    write(path, 'here')
+    assert read(path) == 'here'
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_directory_listing(tmp):
+    write(os.path.join(tmp, 'a.txt'), '')
+
+    @cachify.cache()
+    def names(path):
+        return sorted(os.listdir(path))
+
+    assert_no_untracked(lambda: names(tmp))
+    assert names(tmp) == ['a.txt']
+    write(os.path.join(tmp, 'b.txt'), '')
+    assert names(tmp) == ['a.txt', 'b.txt']
+
+
+def test_scandir(tmp):
+    @cachify.cache()
+    def count(path):
+        with os.scandir(path) as it:
+            return len(list(it))
+
+    assert count(tmp) == 0
+    write(os.path.join(tmp, 'a.txt'), '')
+    assert count(tmp) == 1
+
+
+def test_environment_variable(unset_env):
+    name = unset_env('CACHIFY_TEST_READ')
+    calls = []
+
+    @cachify.cache()
+    def read():
+        calls.append(1)
+        return os.environ.get(name), os.getenv(name)
+
+    assert read() == (None, None)
+    os.environ[name] = 'a'
+    assert read() == ('a', 'a')
+    assert read() == ('a', 'a')
+    os.environ[name] = 'b'
+    assert read() == ('b', 'b')
+    assert len(calls) == 3
+
+
+def test_unrelated_environment_variable(unset_env):
+    other = unset_env('CACHIFY_TEST_OTHER')
+    calls = []
+
+    @cachify.cache()
+    def read():
+        calls.append(1)
+        return 'CACHIFY_TEST_READ' in os.environ
+
+    read()
+    os.environ[other] = '1'
+    read()
+    assert len(calls) == 1
+
+
+def test_whole_environment(unset_env):
+    name = unset_env('CACHIFY_TEST_ALL')
+    f = cachify.cache()(lambda: dict(os.environ))
+    assert name not in f()
+    os.environ[name] = '1'
+    assert name in f()
+
+
+def test_environ_identity_preserved():
+    from os import environ
+    assert environ is os.environ
+    assert isinstance(os.environ, os._Environ)

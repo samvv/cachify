@@ -27,7 +27,7 @@ paths.
 | `cachify/_errors.py` | `CycleError` and `UntrackedEffectWarning` |
 
 Importing `cachify` installs the hooks. Tests are in `tests/` and run with
-`python -m pytest tests` or `python -m unittest discover -s tests`.
+`python -m pytest tests`.
 
 ## Core algorithm
 
